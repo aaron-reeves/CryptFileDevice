@@ -8,6 +8,7 @@
 
 #include <QFileDevice>
 #include <QFile>
+#include <QDebug>
 
 #include <QCryptographicHash>
 
@@ -61,6 +62,11 @@ CryptFileDevice::~CryptFileDevice()
 void CryptFileDevice::setPassword(const QByteArray &password)
 {
     m_password = password;
+}
+
+void CryptFileDevice::setUserHeaderInfo(const QByteArray &info)
+{
+    m_userHeaderInfo = info;
 }
 
 void CryptFileDevice::setSalt(const QByteArray &salt)
@@ -143,6 +149,8 @@ bool CryptFileDevice::open(OpenMode mode)
 
 void CryptFileDevice::insertHeader()
 {
+    int userInfoLength;
+    userInfoLength = m_userHeaderInfo.length();
     QByteArray header;
     header.append(0xcd); // cryptdevice byte
     header.append(0x01); // version
@@ -152,44 +160,97 @@ void CryptFileDevice::insertHeader()
     header.append(passwordHash);
     QByteArray saltHash = QCryptographicHash::hash(m_salt, QCryptographicHash::Sha3_256);
     header.append(saltHash);
+    header.append((char *)&userInfoLength, 4);
+    //qDebug() << "m_userHeaderInfo:" << m_userHeaderInfo.data();
+    header.append(m_userHeaderInfo.data());
     QByteArray padding(kHeaderLength - header.length(), 0xcd);
     header.append(padding);
     m_device->write(header);
 }
 
+
+void CryptFileDevice::headerDebug() {
+  int paddingStart, userInfoLength;
+  QByteArray userInfo;
+  m_device->open( ReadOnly );
+
+  QByteArray header = m_device->read(kHeaderLength);
+  qDebug() << "Header length:" << header.length();
+  qDebug() << "Header char 0:" << header.at(0);
+  qDebug() << "Header char 1:" << header.at(1);
+  qDebug() << "Key length:" << *(int *)header.mid(2, 4).data();
+  qDebug() << "Num rounds:" << *(int *)header.mid(6, 4).data();
+  qDebug() << "Password hash:" << header.mid(10, 32);
+  qDebug() << "Salt hash:" << header.mid(42, 32);
+  userInfoLength = *(int *)header.mid(74, 4).data();
+  qDebug() << "User info length:" << userInfoLength;
+  userInfo = header.mid(78, userInfoLength );
+  qDebug() << "User info:" << userInfo;
+  paddingStart = 78 + userInfoLength;
+  qDebug() << "Padding length:" << header.mid(paddingStart).length();
+
+  m_device->close();
+}
+
+
 bool CryptFileDevice::tryParseHeader()
 {
+    setErrorString( "" );
+
     QByteArray header = m_device->read(kHeaderLength);
-    if (header.length() != kHeaderLength)
+    if (header.length() != kHeaderLength) {
+        setErrorString( "Bad header length" );
         return false;
+    }
 
-    if (header.at(0) != (char)0xcd)
+    if (header.at(0) != (char)0xcd) {
+        setErrorString( "Bad header" );
         return false;
-
+    }
     //int version = header.at(1);
 
     int aesKeyLength = *(int *)header.mid(2, 4).data();
-    if (aesKeyLength != m_aesKeyLength)
-        return false;
+    if (aesKeyLength != m_aesKeyLength) {
+      setErrorString( "Bad key length" );
+      return false;
+  }
 
     int numRounds = *(int *)header.mid(6, 4).data();
-    if (numRounds != m_numRounds)
-        return false;
+    if (numRounds != m_numRounds) {
+      setErrorString( "Bad numRounds" );
+      return false;
+  }
 
     QByteArray passwordHash = header.mid(10, 32);
     QByteArray expectedPasswordHash = QCryptographicHash::hash(m_password, QCryptographicHash::Sha3_256);
-    if (passwordHash != expectedPasswordHash)
+    if (passwordHash != expectedPasswordHash) {
+        setErrorString( "Bad password" );
         return false;
+    }
 
     QByteArray saltHash = header.mid(42, 32);
     QByteArray expectedSaltHash = QCryptographicHash::hash(m_salt, QCryptographicHash::Sha3_256);
-    if (saltHash != expectedSaltHash)
+    if (saltHash != expectedSaltHash) {
+        setErrorString( "Bad password salt" );
         return false;
+    }
 
-    QByteArray padding = header.mid(74);
+    int userInfoLength = *(int *)header.mid(74, 4).data();
+
+    //QByteArray userInfo = header.mid(78, userInfoLength);
+    //qDebug() << "Extracted userInfo:" << userInfo;
+
+    int paddingStart = 78 + userInfoLength;
+
+    QByteArray padding = header.mid(paddingStart);
     QByteArray expectedPadding(padding.length(), 0xcd);
 
-    return padding == expectedPadding;
+    if( padding != expectedPadding ) {
+      setErrorString( "Bad padding" );
+      return false;
+    }
+    else
+      return true;
 }
 
 void CryptFileDevice::close()

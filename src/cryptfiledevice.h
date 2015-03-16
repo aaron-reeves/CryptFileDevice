@@ -50,6 +50,7 @@ public:
     void setSalt(const QByteArray &salt);
     void setKeyLength(AesKeyLength keyLength);
     void setNumRounds(int numRounds);
+    void setUserHeaderInfo( const QByteArray &info );
 
     bool isEncrypted() const;
     qint64 size() const;
@@ -63,6 +64,7 @@ public:
 	bool exists() const;
 	bool rename(const QString &newName);
 
+  void headerDebug();
 protected:
     qint64 readData(char *data, qint64 len);
     qint64 writeData(const char *data, qint64 len);
@@ -84,6 +86,7 @@ private:
 
     QByteArray m_password;
     QByteArray m_salt;
+    QByteArray m_userHeaderInfo;
     AesKeyLength m_aesKeyLength = kAesKeyLength256;
     int m_numRounds = 5;
 
