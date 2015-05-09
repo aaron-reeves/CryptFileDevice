@@ -12,8 +12,8 @@
 
 #include <QCryptographicHash>
 
-static int const kHeaderLength = 128;
-static int const kSaltMaxLength = 8;
+int const kHeaderLength = 128;
+int const kSaltMaxLength = 8;
 
 CryptFileDevice::CryptFileDevice(QObject *parent) :
     QIODevice(parent)

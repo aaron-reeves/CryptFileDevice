@@ -5,6 +5,9 @@
 
 #include <openssl/aes.h>
 
+extern int const kHeaderLength;
+extern int const kSaltMaxLength;
+
 class QFileDevice;
 
 struct CtrState
